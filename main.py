@@ -25,23 +25,21 @@ def test_url(url):
 
 
 def main():
+    # Check that URL is working by sending a request
     try:
         test_url(url)
     except Exception as e:
         print(f"Something went Wrong : {e}")
-
+    # Deploying Playwright to scrape
     with sync_playwright() as playwright:
         html = run(playwright)
         soup = BeautifulSoup(html, "html.parser")
-        with open("musi_playlist.html", mode="w", encoding="utf-8") as f:
-            f.write(html)
-            f.close()
-
+    # Scraping and saving song name + artist in csv file
     links = soup.find_all(class_="video_title")
     print(len(links))
     with open("songs.csv", mode="w", encoding="utf-8") as b:
         for link in links:
-            song = link.get_text(strip=True)
+            song = link.get_text(strip=True) + ","
             b.write(song)
         b.close()
 
