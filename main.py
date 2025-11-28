@@ -29,7 +29,7 @@ def main():
     try:
         test_url(url)
     except Exception as e:
-        print(f"Something went Wrong : {e}")
+        print(f"Something went Wrong : the output code is: {e}")
     # Deploying Playwright to scrape
     with sync_playwright() as playwright:
         html = run(playwright)
@@ -38,9 +38,10 @@ def main():
     links = soup.find_all(class_="video_title")
     print(len(links))
     with open("songs.csv", mode="w", encoding="utf-8") as b:
-        for link in links:
+        for link in links[:-1]:
             song = link.get_text(strip=True) + ","
             b.write(song)
+        b.write(links[-1].get_text(strip=True))
         b.close()
 
 
