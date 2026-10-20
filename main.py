@@ -1,48 +1,70 @@
+import argparse
+import csv
+
 from bs4 import BeautifulSoup
-import requests
 from playwright.sync_api import sync_playwright
 
-url = "https://feelthemusi.com/playlist/pem5gu"  # This is the link that contain my playlist
+from spotipy_api import build_playlist
+
+SONGS_FILE = "songs.csv"
 
 
-def run(playwright):
-    browser = playwright.chromium.launch(
-        headless=True, slow_mo=1000
-    )  # headless=True runs without UI
-    page = browser.new_page()
-    page.goto(url)
-    # html = page.inner_html("#container").
-    html = page.content()
-    browser.close()
-    return html
+def scrape(url):
+    """Open the Musi playlist share page and return the list of video titles."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(url)
+        page.wait_for_selector(".video_title")
+        html = page.content()
+        browser.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    return [link.get_text(strip=True) for link in soup.find_all(class_="video_title")]
 
 
-def test_url(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        print("Success")
-    return response
+def save_songs(songs, path=SONGS_FILE):
+    # One title per row, so titles containing commas stay intact
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        for song in songs:
+            writer.writerow([song])
+
+
+def load_songs(path=SONGS_FILE):
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        return [row[0] for row in csv.reader(f) if row]
 
 
 def main():
-    # Check that URL is working by sending a request
-    try:
-        test_url(url)
-    except Exception as e:
-        print(f"Something went Wrong : the output code is: {e}")
-    # Deploying Playwright to scrape
-    with sync_playwright() as playwright:
-        html = run(playwright)
-        soup = BeautifulSoup(html, "html.parser")
-    # Scraping and saving song name + artist in csv file
-    links = soup.find_all(class_="video_title")
-    print(len(links))
-    with open("songs.csv", mode="w", encoding="utf-8") as b:
-        for link in links[:-1]:
-            song = link.get_text(strip=True) + ","
-            b.write(song)
-        b.write(links[-1].get_text(strip=True))
-        b.close()
+    parser = argparse.ArgumentParser(description="Move a Musi playlist to Spotify.")
+    parser.add_argument(
+        "url",
+        nargs="?",
+        help="Musi playlist share link (https://feelthemusi.com/playlist/<id>)",
+    )
+    parser.add_argument(
+        "--name", default="MyMusync", help="name of the Spotify playlist to create"
+    )
+    parser.add_argument(
+        "--from-csv",
+        action="store_true",
+        help=f"skip scraping and reuse the titles saved in {SONGS_FILE}",
+    )
+    args = parser.parse_args()
+
+    if args.from_csv:
+        songs = load_songs()
+    elif args.url:
+        songs = scrape(args.url)
+        if not songs:
+            parser.exit(1, "No songs found on that page.\n")
+        save_songs(songs)
+        print(f"Scraped {len(songs)} songs into {SONGS_FILE}")
+    else:
+        parser.error("give a playlist URL or use --from-csv")
+
+    build_playlist(songs, args.name)
 
 
 if __name__ == "__main__":
